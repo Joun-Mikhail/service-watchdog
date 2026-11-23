@@ -35,6 +35,7 @@ class Settings:
     tls_expiry_warning_days: int = 14
     smtp_server: str = "smtp.gmail.com"
     smtp_port: int = 587
+    history_file: str = "logs/history.csv"
 
 
 def _positive_number(raw, key, default):
@@ -105,4 +106,5 @@ def load_config(path="config.yaml"):
         tls_expiry_warning_days=int(_positive_number(raw, "tls_expiry_warning_days", 14)),
         smtp_server=email.get("smtp_server", "smtp.gmail.com"),
         smtp_port=int(email.get("smtp_port", 587)),
+        history_file=str(raw.get("history_file", "logs/history.csv")),
     )

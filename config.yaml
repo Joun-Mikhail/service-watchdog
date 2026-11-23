@@ -12,6 +12,9 @@ failure_threshold: 2
 # Warn when a TLS certificate expires in fewer than this many days
 tls_expiry_warning_days: 14
 
+# Every check result is appended here; used by report.py
+history_file: logs/history.csv
+
 # Endpoints to monitor. A plain URL works, or a mapping with extra checks.
 targets:
   - name: Example
