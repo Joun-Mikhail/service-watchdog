@@ -19,6 +19,8 @@ layer that failed and points to the runbook for fixing it.
 - **Recovery notices** — reports total downtime when a service comes back
 - **Structured logs** — `key=value` lines that are easy to grep or query, with automatic rotation
 - **Scriptable** — `--once` exits non-zero when something is down, for cron jobs and CI
+- **Uptime reports** — daily uptime %, incident count and p95 latency per service (text or HTML)
+- **Runs anywhere** — Docker, a hardened systemd service on Linux, or Task Scheduler on Windows
 
 ---
 
@@ -66,6 +68,67 @@ python watchdog.py
 | `--dry-run`   | Log alerts instead of emailing them                               |
 
 Exit codes: `0` all healthy, `1` at least one target down, `2` configuration error.
+
+---
+
+## Deployment
+
+All three methods are installed and verified automatically in CI on every push.
+
+### Docker
+
+```bash
+cp .env.example .env
+docker compose up -d --build
+docker compose logs -f
+```
+
+The container runs as an unprivileged user; `config.yaml` is mounted read-only and logs persist in `./logs`.
+
+### Linux (systemd)
+
+```bash
+sudo ./deploy/linux/install.sh
+journalctl -u service-watchdog -f
+```
+
+Installs to `/opt/service-watchdog` with its own virtual environment and a dedicated `watchdog` system
+user. The unit is sandboxed (`ProtectSystem=strict`, `NoNewPrivileges`, write access to `logs/` only),
+restarts on failure, and does not restart-loop on a bad config (exit code 2). A systemd timer writes the
+daily report to `/opt/service-watchdog/reports/uptime-latest.html` at 07:00.
+
+### Windows (Task Scheduler)
+
+From an elevated PowerShell in the repository folder:
+
+```powershell
+.\deploy\windows\Install-WatchdogTask.ps1
+Get-Content .\logs\watchdog.log -Tail 20 -Wait
+```
+
+Registers a task that starts at boot and restarts on failure, plus a daily report task. Runs without
+a stored password (S4U logon). Remove with `-Uninstall`.
+
+---
+
+## Uptime report
+
+Every check is appended to `logs/history.csv`. Summarise it with:
+
+```bash
+python report.py                                  # last 24 hours
+python report.py --hours 168 --html reports/weekly.html
+```
+
+```
+Uptime report - last 24h
+
+Service                    Uptime  Checks Incidents  Avg ms  p95 ms  Top failure
+--------------------------------------------------------------------------------
+Public API                 99.65%     288         1     121     188  HTTP
+Shop                       98.96%     288         2     204     311  TCP
+Blog                      100.00%     288         0     242     260  -
+```
 
 ---
 
@@ -147,7 +210,8 @@ pytest          # unit tests (network calls are mocked)
 ruff check .    # lint
 ```
 
-CI runs lint and the test suite on Python 3.10 – 3.13 for every push and pull request.
+CI runs on every push and pull request: lint, tests on Python 3.10 – 3.13, a Docker build, and real
+installs of the systemd service (Ubuntu) and the scheduled tasks (Windows).
 
 ---
 
@@ -161,6 +225,11 @@ diagnostics.py     DNS, TCP and TLS checks
 state.py           failure threshold and incident tracking
 alerter.py         alert message formatting and SMTP delivery
 logger.py          rotating file + console logging
+history.py         CSV check history
+report.py          uptime report (text / HTML)
+deploy/linux/      systemd units and installer
+deploy/windows/    Task Scheduler installer
+Dockerfile         container image (non-root)
 tests/             pytest suite
 ```
 
