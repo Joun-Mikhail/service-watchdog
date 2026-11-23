@@ -55,7 +55,6 @@ def run():
     interval = config["check_interval"] * 60
     timeout = config.get("timeout", 10)
 
-    # Track which URLs are currently down and when they went down
     down_since = {}
 
     logger.info("Service Watchdog started. Monitoring %d URLs every %d minutes.",
