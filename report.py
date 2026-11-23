@@ -28,6 +28,7 @@ class TargetSummary:
     url: str
     checks: int = 0
     healthy: int = 0
+    degraded: int = 0
     incidents: int = 0
     latencies: list = field(default_factory=list)
     failure_categories: Counter = field(default_factory=Counter)
@@ -60,6 +61,8 @@ def summarise(rows):
         s.checks += 1
         if row["status"] in HEALTHY:
             s.healthy += 1
+            if row["status"] == "DEGRADED":
+                s.degraded += 1
         else:
             s.failure_categories[row["category"] or "UNKNOWN"] += 1
             if s._last_status in HEALTHY or not s._last_status:
@@ -83,13 +86,13 @@ def _top_failure(s):
 def render_text(summaries, hours):
     """Return the report as a fixed-width text table."""
     header = (
-        f"{'Service':<24} {'Uptime':>8} {'Checks':>7} {'Incidents':>9} "
+        f"{'Service':<24} {'Uptime':>8} {'Checks':>7} {'Degraded':>8} {'Incidents':>9} "
         f"{'Avg ms':>7} {'p95 ms':>7}  Top failure"
     )
     lines = [f"Uptime report - last {hours}h", "", header, "-" * len(header)]
     for s in summaries:
         lines.append(
-            f"{s.name[:24]:<24} {s.uptime_pct:>7.2f}% {s.checks:>7} {s.incidents:>9} "
+            f"{s.name[:24]:<24} {s.uptime_pct:>7.2f}% {s.checks:>7} {s.degraded:>8} {s.incidents:>9} "
             f"{_fmt_ms(s.avg_latency_ms):>7} {_fmt_ms(s.p95_latency_ms):>7}  {_top_failure(s)}"
         )
     if not summaries:
@@ -106,12 +109,12 @@ def render_html(summaries, hours, generated_at):
             "<tr>"
             f"<td>{html.escape(s.name)}<br><small>{html.escape(s.url)}</small></td>"
             f'<td class="{css}">{s.uptime_pct:.2f}%</td>'
-            f"<td>{s.checks}</td><td>{s.incidents}</td>"
+            f"<td>{s.checks}</td><td>{s.degraded}</td><td>{s.incidents}</td>"
             f"<td>{_fmt_ms(s.avg_latency_ms)}</td><td>{_fmt_ms(s.p95_latency_ms)}</td>"
             f"<td>{html.escape(_top_failure(s))}</td>"
             "</tr>"
         )
-    body = "\n".join(rows) or '<tr><td colspan="7">No checks recorded in this period.</td></tr>'
+    body = "\n".join(rows) or '<tr><td colspan="8">No checks recorded in this period.</td></tr>'
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -130,9 +133,9 @@ def render_html(summaries, hours, generated_at):
 </head>
 <body>
 <h1>Uptime report</h1>
-<p>Last {hours} hours &middot; generated {generated_at:%Y-%m-%d %H:%M} UTC</p>
+<p>Last {hours} hour{"" if hours == 1 else "s"} &middot; generated {generated_at:%Y-%m-%d %H:%M} UTC</p>
 <table>
-<tr><th>Service</th><th>Uptime</th><th>Checks</th><th>Incidents</th>
+<tr><th>Service</th><th>Uptime</th><th>Checks</th><th>Degraded</th><th>Incidents</th>
 <th>Avg ms</th><th>p95 ms</th><th>Top failure</th></tr>
 {body}
 </table>

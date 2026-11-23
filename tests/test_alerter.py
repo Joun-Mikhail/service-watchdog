@@ -39,3 +39,13 @@ def test_recovery_message_includes_downtime():
 
     assert subject == "[RECOVERED] API - back up after 5m 1s"
     assert "Downtime:    5m 1s" in body
+
+
+def test_every_runbook_linked_from_alerts_exists():
+    from pathlib import Path
+
+    from alerter import RUNBOOKS
+
+    root = Path(__file__).resolve().parents[1]
+    missing = [path for path in set(RUNBOOKS.values()) if not (root / path).is_file()]
+    assert missing == []

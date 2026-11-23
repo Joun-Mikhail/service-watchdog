@@ -1,0 +1,36 @@
+# Demo configuration for the local lab (python demo/lab.py).
+# Each target fails in a different way so every diagnostic category shows up.
+
+check_interval: 0.1          # minutes (6 seconds) so the demo moves quickly
+timeout: 3
+failure_threshold: 2
+history_file: logs/demo-history.csv
+
+targets:
+  - name: Shop
+    url: http://127.0.0.1:8081/
+    keyword: Welcome
+    max_latency_ms: 500
+
+  - name: Payments API
+    url: http://127.0.0.1:8082/health
+
+  - name: Search
+    url: http://127.0.0.1:8083/
+    max_latency_ms: 500
+
+  - name: Blog
+    url: http://127.0.0.1:8084/
+    keyword: Welcome
+
+  - name: Orders API
+    url: http://127.0.0.1:8085/health
+
+  - name: Admin portal
+    url: https://127.0.0.1:8443/
+
+  - name: Legacy CRM
+    url: http://127.0.0.1:8089/
+
+  - name: Old marketing site
+    url: https://promo.example.invalid/
