@@ -33,3 +33,69 @@ jobs:
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Run tests
         run: pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t service-watchdog:ci .
+      - name: Container runs as a non-root user
+        run: test "$(docker run --rm --entrypoint id service-watchdog:ci -u)" = "10001"
+      - name: Smoke test
+        run: docker run --rm service-watchdog:ci --help
+
+  linux-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prerequisites
+        run: |
+          command -v shellcheck >/dev/null || sudo apt-get install -y shellcheck
+          python3 -m venv --help >/dev/null || sudo apt-get install -y python3-venv
+      - name: ShellCheck
+        run: shellcheck deploy/linux/install.sh
+      - name: Install as a systemd service
+        run: sudo ./deploy/linux/install.sh
+      - name: Service is running without restarts
+        run: |
+          sleep 10
+          systemctl is-active service-watchdog
+          test "$(systemctl show -p NRestarts --value service-watchdog)" = "0"
+          systemctl list-timers service-watchdog-report.timer --no-pager
+      - name: Report job produces HTML
+        run: |
+          sudo systemctl start service-watchdog-report.service
+          sudo test -s /opt/service-watchdog/reports/uptime-latest.html
+      - name: Service logs
+        if: always()
+        run: sudo journalctl -u service-watchdog -u service-watchdog-report --no-pager -n 40
+
+  windows-task:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
+          Invoke-ScriptAnalyzer -Path deploy/windows -Recurse -Severity Warning,Error -EnableExit
+      - name: Register scheduled tasks (Windows PowerShell 5.1)
+        shell: powershell
+        run: ./deploy/windows/Install-WatchdogTask.ps1
+      - name: Monitor task is running
+        shell: powershell
+        run: |
+          Start-Sleep -Seconds 15
+          $task = Get-ScheduledTask -TaskName service-watchdog
+          Get-ScheduledTask -TaskName service-watchdog, service-watchdog-report | Format-Table TaskName, State
+          if ($task.State -ne 'Running') { throw "service-watchdog task state is $($task.State)" }
+          Get-Content logs\watchdog.log -Tail 10
+      - name: Uninstall removes tasks
+        shell: powershell
+        run: |
+          ./deploy/windows/Install-WatchdogTask.ps1 -Uninstall
+          if (Get-ScheduledTask -TaskName service-watchdog -ErrorAction SilentlyContinue) { throw 'task still registered' }

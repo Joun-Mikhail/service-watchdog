@@ -1,0 +1,16 @@
+[Unit]
+Description=service-watchdog daily uptime report
+Documentation=https://github.com/Joun-Mikhail/service-watchdog
+
+[Service]
+Type=oneshot
+User=watchdog
+Group=watchdog
+WorkingDirectory=/opt/service-watchdog
+ExecStart=/opt/service-watchdog/venv/bin/python report.py --hours 24 --html reports/uptime-latest.html
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/service-watchdog/reports

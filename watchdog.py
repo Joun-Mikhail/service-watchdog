@@ -9,6 +9,7 @@ import time
 
 from dotenv import load_dotenv
 
+import history
 from alerter import build_message, send_email
 from config import ConfigError, load_config
 from logger import setup_logger
@@ -57,6 +58,7 @@ def run_round(settings, tracker, creds, logger, dry_run):
         level = {DOWN: logger.error, DEGRADED: logger.warning}.get(result.status, logger.info)
         level(result.log_line())
 
+        history.append(result, settings.history_file)
         event = tracker.update(result)
         if event:
             dispatch(event, settings, creds, logger, dry_run)
