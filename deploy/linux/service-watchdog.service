@@ -1,0 +1,30 @@
+[Unit]
+Description=service-watchdog uptime monitor
+Documentation=https://github.com/Joun-Mikhail/service-watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=watchdog
+Group=watchdog
+WorkingDirectory=/opt/service-watchdog
+ExecStart=/opt/service-watchdog/venv/bin/python watchdog.py --config config.yaml
+Restart=on-failure
+RestartSec=30
+# Exit code 2 means invalid config: restarting will not fix it
+RestartPreventExitStatus=2
+
+# Hardening: read-only system, no privilege escalation, write access only to logs
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/service-watchdog/logs
+
+[Install]
+WantedBy=multi-user.target
