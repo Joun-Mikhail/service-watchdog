@@ -2,6 +2,8 @@
 
 A lightweight Python service that monitors a list of URLs and alerts you by email when any go down. It tracks downtime duration and sends a recovery notice when services come back up.
 
+[![CI](https://github.com/Joun-Mikhail/service-watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/Joun-Mikhail/service-watchdog/actions/workflows/ci.yml)
+
 ## Requirements
 
 - Python 3.9+
