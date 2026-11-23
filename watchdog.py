@@ -32,10 +32,17 @@ def parse_args(argv=None):
     return parser.parse_args(argv)
 
 
+def _is_placeholder(value):
+    """True for the template values shipped in .env.example."""
+    return value.startswith("your-") or value.endswith("@example.com")
+
+
 def email_credentials():
-    """Return (sender, password, recipient) from the environment, or None if any is missing."""
-    creds = tuple(os.getenv(k) for k in ("SENDER_EMAIL", "SENDER_PASSWORD", "RECIPIENT_EMAIL"))
-    return creds if all(creds) else None
+    """Return (sender, password, recipient) from the environment, or None if unset or still the template."""
+    creds = tuple(os.getenv(k, "").strip() for k in ("SENDER_EMAIL", "SENDER_PASSWORD", "RECIPIENT_EMAIL"))
+    if not all(creds) or any(_is_placeholder(v) for v in creds):
+        return None
+    return creds
 
 
 @dataclass

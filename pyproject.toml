@@ -9,3 +9,9 @@ ignore = ["UP006", "UP007", "UP035", "UP045"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
+
+[tool.coverage.run]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+skip_empty = true
