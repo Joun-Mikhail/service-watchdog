@@ -12,8 +12,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Check imports resolve
-        run: python -c "import watchdog, monitor, alerter, logger"
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      - name: Format
+        run: ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run tests
+        run: pytest
