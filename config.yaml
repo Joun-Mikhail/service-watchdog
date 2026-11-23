@@ -12,10 +12,7 @@ check_interval: 5
 # Timeout in seconds per request
 timeout: 10
 
-# Alert email settings (credentials loaded from .env file)
+# SMTP server for alerts (credentials are read from the .env file)
 email:
   smtp_server: smtp.gmail.com
   smtp_port: 587
-  sender: ${SENDER_EMAIL}
-  password: ${SENDER_PASSWORD}
-  recipient: ${RECIPIENT_EMAIL}
