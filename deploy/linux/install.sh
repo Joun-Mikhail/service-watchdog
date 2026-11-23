@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 # Install service-watchdog as a hardened systemd service.
-# Tested on Ubuntu 22.04+/Debian 12 and Amazon Linux 2023.
+# Works on Ubuntu 22.04+, Debian 12 and Amazon Linux 2023.
 #
 # Usage: sudo ./deploy/linux/install.sh
+#        sudo PYTHON=python3.11 ./deploy/linux/install.sh   # pick a specific interpreter
 set -euo pipefail
 
 APP_DIR=/opt/service-watchdog
 SERVICE_USER=watchdog
 SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+PYTHON="${PYTHON:-python3}"
 
 log() { printf '==> %s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 [[ $EUID -eq 0 ]] || die "run as root: sudo $0"
-command -v python3 >/dev/null || die "python3 is not installed"
-python3 -c 'import sys; sys.exit(sys.version_info < (3, 10))' || die "python 3.10 or newer is required"
-python3 -m venv --help >/dev/null 2>&1 || die "python3 venv module missing (Debian/Ubuntu: apt install python3-venv)"
+command -v "$PYTHON" >/dev/null || die "$PYTHON is not installed"
+"$PYTHON" -c 'import sys; sys.exit(sys.version_info < (3, 10))' \
+    || die "python 3.10 or newer is required (set PYTHON=python3.11 or similar)"
+"$PYTHON" -m venv --help >/dev/null 2>&1 \
+    || die "python venv module missing (Debian/Ubuntu: apt install python3-venv)"
 
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
     log "creating system user $SERVICE_USER"
@@ -36,7 +40,7 @@ if [[ ! -f "$APP_DIR/.env" ]]; then
 fi
 
 log "creating virtual environment"
-python3 -m venv "$APP_DIR/venv"
+"$PYTHON" -m venv "$APP_DIR/venv"
 "$APP_DIR/venv/bin/pip" install --quiet --upgrade pip
 "$APP_DIR/venv/bin/pip" install --quiet -r "$APP_DIR/requirements.txt"
 
