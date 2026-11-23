@@ -1,16 +1,30 @@
-# Service Watchdog Configuration
+# service-watchdog configuration
 
-# List of URLs to monitor
-urls:
-  - https://www.google.com
-  - https://www.github.com
-  - https://www.example.com
-
-# Check interval in minutes
+# Minutes between check rounds
 check_interval: 5
 
-# Timeout in seconds per request
+# Seconds to wait for each network operation
 timeout: 10
+
+# Consecutive failures before a DOWN alert is sent (avoids alerting on blips)
+failure_threshold: 2
+
+# Warn when a TLS certificate expires in fewer than this many days
+tls_expiry_warning_days: 14
+
+# Endpoints to monitor. A plain URL works, or a mapping with extra checks.
+targets:
+  - name: Example
+    url: https://example.com
+    expected_status: 200
+    keyword: "Example Domain"
+    max_latency_ms: 2000
+
+  - name: GitHub
+    url: https://github.com
+    max_latency_ms: 3000
+
+  - https://www.google.com
 
 # SMTP server for alerts (credentials are read from the .env file)
 email:

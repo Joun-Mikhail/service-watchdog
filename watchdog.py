@@ -1,97 +1,103 @@
+"""service-watchdog entry point: run checks on a schedule and send alerts."""
+
+from __future__ import annotations
+
+import argparse
 import os
+import sys
 import time
 
-import yaml
 from dotenv import load_dotenv
 
-from monitor import check_url
-from alerter import send_down_alert, send_recovery_alert
+from alerter import build_message, send_email
+from config import ConfigError, load_config
 from logger import setup_logger
+from monitor import DEGRADED, DOWN, check_target
+from state import StateTracker
 
 
-def load_config(path="config.yaml"):
-    """Load and return the watchdog configuration from a YAML file.
-
-    Args:
-        path: Path to the YAML config file.
-
-    Returns:
-        A dict containing the parsed configuration.
-    """
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
-
-def get_email_settings(config):
-    """Build email settings dict from config and environment variables.
-
-    Args:
-        config: The parsed config dict from config.yaml.
-
-    Returns:
-        A dict with smtp_server, smtp_port, sender, password, and recipient.
-    """
-    return {
-        "smtp_server": config["email"]["smtp_server"],
-        "smtp_port": config["email"]["smtp_port"],
-        "sender": os.getenv("SENDER_EMAIL"),
-        "password": os.getenv("SENDER_PASSWORD"),
-        "recipient": os.getenv("RECIPIENT_EMAIL"),
-    }
+def parse_args(argv=None):
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Monitor URLs and alert when they go down.")
+    parser.add_argument("--config", default="config.yaml", help="path to the YAML config file")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="run one round of checks and exit (exit code 1 if anything is down)",
+    )
+    parser.add_argument("--dry-run", action="store_true", help="log alerts instead of sending email")
+    return parser.parse_args(argv)
 
 
-def run():
-    """Main loop that monitors URLs and sends alerts on status changes.
+def email_credentials():
+    """Return (sender, password, recipient) from the environment, or None if any is missing."""
+    creds = tuple(os.getenv(k) for k in ("SENDER_EMAIL", "SENDER_PASSWORD", "RECIPIENT_EMAIL"))
+    return creds if all(creds) else None
 
-    Loads configuration, checks each URL at the configured interval,
-    logs results, and sends email alerts when services go down or recover.
-    """
+
+def dispatch(event, settings, creds, logger, dry_run):
+    """Send (or log, in dry-run mode) the alert for an Event."""
+    subject, body = build_message(event)
+    if dry_run or creds is None:
+        logger.info("alert (not emailed): %s", subject)
+        return
+    sender, password, recipient = creds
+    try:
+        send_email(settings.smtp_server, settings.smtp_port, sender, password, recipient, subject, body)
+        logger.info("alert emailed: %s", subject)
+    except Exception as e:
+        logger.error("failed to send alert '%s': %s", subject, e)
+
+
+def run_round(settings, tracker, creds, logger, dry_run):
+    """Check every target once; return the list of CheckResults."""
+    results = []
+    for target in settings.targets:
+        result = check_target(target, settings.timeout, settings.tls_expiry_warning_days)
+        level = {DOWN: logger.error, DEGRADED: logger.warning}.get(result.status, logger.info)
+        level(result.log_line())
+
+        event = tracker.update(result)
+        if event:
+            dispatch(event, settings, creds, logger, dry_run)
+        results.append(result)
+    return results
+
+
+def main(argv=None):
+    """Load config, then run checks once or forever. Returns a process exit code."""
+    args = parse_args(argv)
     load_dotenv()
-    config = load_config()
     logger = setup_logger()
-    email_settings = get_email_settings(config)
 
-    urls = config["urls"]
-    interval = config["check_interval"] * 60
-    timeout = config.get("timeout", 10)
+    try:
+        settings = load_config(args.config)
+    except ConfigError as e:
+        logger.error("configuration error: %s", e)
+        return 2
 
-    down_since = {}
+    creds = email_credentials()
+    if creds is None and not args.dry_run:
+        logger.warning("email credentials not set in .env; alerts will only be logged")
 
-    logger.info("Service Watchdog started. Monitoring %d URLs every %d minutes.",
-                len(urls), config["check_interval"])
+    tracker = StateTracker(1 if args.once else settings.failure_threshold)
+    logger.info(
+        "watchdog started: %d targets, every %s min, alert after %d failures",
+        len(settings.targets),
+        settings.check_interval,
+        tracker.failure_threshold,
+    )
 
-    while True:
-        for url in urls:
-            result = check_url(url, timeout=timeout)
-
-            if result["is_up"]:
-                logger.info("URL: %s | Status: %d | Response Time: %.2f ms",
-                            result["url"], result["status_code"], result["response_time_ms"])
-
-                if url in down_since:
-                    downtime = time.time() - down_since.pop(url)
-                    logger.info("URL: %s | RECOVERED after %.0f seconds", url, downtime)
-                    try:
-                        send_recovery_alert(**email_settings, url=url, downtime_seconds=downtime)
-                        logger.info("Recovery email sent for %s", url)
-                    except Exception as e:
-                        logger.error("Failed to send recovery email for %s: %s", url, e)
-            else:
-                error_msg = result.get("error", "")
-                logger.warning("URL: %s | Status: %d | DOWN | Error: %s",
-                               result["url"], result["status_code"], error_msg)
-
-                if url not in down_since:
-                    down_since[url] = time.time()
-                    try:
-                        send_down_alert(**email_settings, url=url,
-                                        status_code=result["status_code"], error=error_msg)
-                        logger.info("Down alert email sent for %s", url)
-                    except Exception as e:
-                        logger.error("Failed to send down alert email for %s: %s", url, e)
-
-        time.sleep(interval)
+    try:
+        while True:
+            results = run_round(settings, tracker, creds, logger, args.dry_run)
+            if args.once:
+                return 1 if any(r.status == DOWN for r in results) else 0
+            time.sleep(settings.check_interval * 60)
+    except KeyboardInterrupt:
+        logger.info("watchdog stopped")
+        return 0
 
 
 if __name__ == "__main__":
-    run()
+    sys.exit(main())

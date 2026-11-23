@@ -1,109 +1,88 @@
+"""Build and send alert emails over SMTP (standard library only)."""
+
+from __future__ import annotations
+
 import smtplib
-from email.mime.text import MIMEText
 from datetime import datetime
+from email.mime.text import MIMEText
+
+from state import EVENT_DEGRADED, EVENT_DOWN
+
+RUNBOOKS = {
+    "DNS": "docs/runbooks/dns-failure.md",
+    "TCP": "docs/runbooks/connection-failure.md",
+    "TLS": "docs/runbooks/tls-certificate.md",
+    "TLS_EXPIRING": "docs/runbooks/tls-certificate.md",
+    "HTTP": "docs/runbooks/http-errors.md",
+    "CONTENT": "docs/runbooks/http-errors.md",
+    "LATENCY": "docs/runbooks/high-latency.md",
+}
 
 
-def send_down_alert(smtp_server, smtp_port, sender, password, recipient, url, status_code, error=None):
-    """Send an email alert when a monitored URL goes down.
-
-    Args:
-        smtp_server: SMTP server hostname.
-        smtp_port: SMTP server port.
-        sender: Sender email address.
-        password: Sender email password or app password.
-        recipient: Recipient email address.
-        url: The URL that is down.
-        status_code: HTTP status code received (0 if unreachable).
-        error: Optional error message from the request.
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"[ALERT] Service Down: {url}"
-
-    body = f"""Service Watchdog Alert
-
-URL: {url}
-Status: DOWN
-Status Code: {status_code}
-Time: {timestamp}
-"""
-    if error:
-        body += f"Error: {error}\n"
-
-    body += "\nThis is an automated alert from Service Watchdog."
-
-    _send_email(smtp_server, smtp_port, sender, password, recipient, subject, body)
-
-
-def send_recovery_alert(smtp_server, smtp_port, sender, password, recipient, url, downtime_seconds):
-    """Send an email alert when a monitored URL recovers.
-
-    Args:
-        smtp_server: SMTP server hostname.
-        smtp_port: SMTP server port.
-        sender: Sender email address.
-        password: Sender email password or app password.
-        recipient: Recipient email address.
-        url: The URL that recovered.
-        downtime_seconds: How long the service was down in seconds.
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    subject = f"[RECOVERY] Service Back Up: {url}"
-
-    downtime_str = _format_downtime(downtime_seconds)
-
-    body = f"""Service Watchdog Recovery Notice
-
-URL: {url}
-Status: UP (Recovered)
-Time: {timestamp}
-Downtime Duration: {downtime_str}
-
-This is an automated alert from Service Watchdog."""
-
-    _send_email(smtp_server, smtp_port, sender, password, recipient, subject, body)
-
-
-def _format_downtime(seconds):
-    """Format a duration in seconds into a human-readable string.
-
-    Args:
-        seconds: Duration in seconds.
-
-    Returns:
-        A string like '2h 15m 30s' or '45s'.
-    """
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-
+def format_downtime(seconds):
+    """Format a duration in seconds as a short string such as '2h 15m 30s'."""
+    hours, rem = divmod(int(seconds), 3600)
+    minutes, secs = divmod(rem, 60)
     parts = []
-    if hours > 0:
+    if hours:
         parts.append(f"{hours}h")
-    if minutes > 0:
+    if minutes:
         parts.append(f"{minutes}m")
     parts.append(f"{secs}s")
-
     return " ".join(parts)
 
 
-def _send_email(smtp_server, smtp_port, sender, password, recipient, subject, body):
-    """Send an email using SMTP with TLS.
+def build_message(event):
+    """Return (subject, body) for an Event."""
+    r = event.result
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    Args:
-        smtp_server: SMTP server hostname.
-        smtp_port: SMTP server port.
-        sender: Sender email address.
-        password: Sender email password or app password.
-        recipient: Recipient email address.
-        subject: Email subject line.
-        body: Email body text.
-    """
+    if event.kind == EVENT_DOWN:
+        subject = f"[DOWN] {r.name} - {r.category} failure"
+        headline = "Service is DOWN"
+    elif event.kind == EVENT_DEGRADED:
+        subject = f"[DEGRADED] {r.name} - {r.category}"
+        headline = "Service is DEGRADED"
+    else:
+        subject = f"[RECOVERED] {r.name} - back up after {format_downtime(event.downtime_seconds)}"
+        headline = "Service has RECOVERED"
+
+    lines = [
+        headline,
+        "",
+        f"Service:     {r.name}",
+        f"URL:         {r.url}",
+        f"Time:        {timestamp}",
+    ]
+    if r.category:
+        lines.append(f"Failure:     {r.category}")
+    if r.detail:
+        lines.append(f"Detail:      {r.detail}")
+    if r.ip:
+        lines.append(f"Resolved IP: {r.ip}")
+    if r.status_code is not None:
+        lines.append(f"HTTP status: {r.status_code}")
+    if r.response_time_ms is not None:
+        lines.append(f"Latency:     {r.response_time_ms} ms")
+    if r.tls_days_left is not None:
+        lines.append(f"TLS expiry:  {r.tls_days_left} days")
+    if event.downtime_seconds is not None:
+        lines.append(f"Downtime:    {format_downtime(event.downtime_seconds)}")
+    if r.category in RUNBOOKS:
+        lines += ["", f"Runbook:     {RUNBOOKS[r.category]}"]
+    lines += ["", "-- service-watchdog"]
+
+    return subject, "\n".join(lines)
+
+
+def send_email(smtp_server, smtp_port, sender, password, recipient, subject, body):
+    """Send a plain-text email using SMTP with STARTTLS."""
     msg = MIMEText(body)
     msg["Subject"] = subject
     msg["From"] = sender
     msg["To"] = recipient
 
-    with smtplib.SMTP(smtp_server, smtp_port) as server:
+    with smtplib.SMTP(smtp_server, smtp_port, timeout=30) as server:
         server.starttls()
         server.login(sender, password)
         server.send_message(msg)
