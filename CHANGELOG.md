@@ -23,5 +23,5 @@ All notable changes to this project are documented here. The format follows
   filters, alarms and dashboard, SNS alerts and automatic instance recovery
 - Demo lab with local services for every failure type
 - Troubleshooting toolkit, postmortem template and worked example
-- CI: lint, tests with coverage on Python 3.10–3.13, Docker build, real Linux and Windows installs,
+- CI: lint, tests with coverage on Python 3.10–3.15, Docker build, real Linux and Windows installs,
   Terraform validation, CodeQL and Dependabot
