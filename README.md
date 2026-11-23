@@ -1,101 +1,84 @@
-# Service Watchdog
-
-A lightweight Python service that monitors a list of URLs and alerts you by email when any go down. It tracks downtime duration and sends a recovery notice when services come back up.
+# service-watchdog
 
 [![CI](https://github.com/Joun-Mikhail/service-watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/Joun-Mikhail/service-watchdog/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 
-## Requirements
+A lightweight Python uptime monitor. Checks a list of URLs on a schedule, logs every result, and sends a single email alert when a service goes down. Sends a recovery notice with total downtime when it comes back up.
 
-- Python 3.9+
-- An email account with SMTP access (e.g., Gmail with an [App Password](https://support.google.com/accounts/answer/185833))
+---
 
-## Setup
+## How it works
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/your-username/service-watchdog.git
-   cd service-watchdog
-   ```
+```
+watchdog.py  →  monitor.py   checks each URL, records status + response time
+             →  alerter.py   sends DOWN alert (once) or RECOVERY with downtime
+             →  logger.py    writes timestamped entries to logs/watchdog.log
+             →  config.yaml  URLs, interval, timeout, SMTP settings
+```
 
-2. **Install dependencies:**
-   ```bash
-   pip install -r requirements.txt
-   ```
+---
 
-3. **Configure email credentials:**
-   ```bash
-   cp .env.example .env
-   ```
-   Edit `.env` and fill in your email credentials:
-   ```
-   SENDER_EMAIL=your-email@gmail.com
-   SENDER_PASSWORD=your-app-password
-   RECIPIENT_EMAIL=alert-recipient@example.com
-   ```
+## Quick start
 
-4. **Run the watchdog:**
-   ```bash
-   python watchdog.py
-   ```
+```bash
+git clone https://github.com/Joun-Mikhail/service-watchdog.git
+cd service-watchdog
+pip install -r requirements.txt
+cp .env.example .env
+python watchdog.py
+```
 
-## Adding URLs to Monitor
+---
 
-Edit `config.yaml` and add URLs to the `urls` list:
+## Configuration
+
+`config.yaml`:
 
 ```yaml
 urls:
-  - https://www.google.com
-  - https://www.github.com
-  - https://your-service.example.com
+  - https://your-api.example.com/health
+  - https://your-site.example.com
+check_interval: 5
+timeout: 10
 ```
 
-You can also adjust the check interval and timeout:
-
-```yaml
-check_interval: 5   # minutes between checks
-timeout: 10          # seconds per request
-```
-
-## Sample Log Output
+`.env`:
 
 ```
-2025-01-15 10:30:00 - INFO - Service Watchdog started. Monitoring 3 URLs every 5 minutes.
-2025-01-15 10:30:01 - INFO - URL: https://www.google.com | Status: 200 | Response Time: 120.45 ms
-2025-01-15 10:30:02 - INFO - URL: https://www.github.com | Status: 200 | Response Time: 250.30 ms
-2025-01-15 10:30:03 - WARNING - URL: https://www.example.com | Status: 0 | DOWN | Error: ConnectionError
-2025-01-15 10:30:03 - INFO - Down alert email sent for https://www.example.com
-2025-01-15 10:35:04 - INFO - URL: https://www.example.com | Status: 200 | Response Time: 95.12 ms
-2025-01-15 10:35:04 - INFO - URL: https://www.example.com | RECOVERED after 301 seconds
-2025-01-15 10:35:04 - INFO - Recovery email sent for https://www.example.com
+SENDER_EMAIL=your-email@gmail.com
+SENDER_PASSWORD=your-app-password
+RECIPIENT_EMAIL=alerts@your-team.com
 ```
 
-## Sample Alert Email
+---
 
-**Down alert:**
+## Sample log
+
 ```
-Subject: [ALERT] Service Down: https://www.example.com
-
-Service Watchdog Alert
-
-URL: https://www.example.com
-Status: DOWN
-Status Code: 0
-Time: 2025-01-15 10:30:03
-Error: ConnectionError
-
-This is an automated alert from Service Watchdog.
+2026-11-23 10:30:01 - INFO    - https://your-api.example.com/health | 200 | 120ms
+2026-11-23 10:30:03 - WARNING - https://your-site.example.com | DOWN | ConnectionError
+2026-11-23 10:30:03 - INFO    - Down alert sent
+2026-11-23 10:35:04 - INFO    - https://your-site.example.com | RECOVERED after 301s
+2026-11-23 10:35:04 - INFO    - Recovery alert sent
 ```
 
-**Recovery alert:**
+---
+
+## Project structure
+
 ```
-Subject: [RECOVERY] Service Back Up: https://www.example.com
-
-Service Watchdog Recovery Notice
-
-URL: https://www.example.com
-Status: UP (Recovered)
-Time: 2025-01-15 10:35:04
-Downtime Duration: 5m 1s
-
-This is an automated alert from Service Watchdog.
+watchdog.py        main loop
+monitor.py         check_url() — status code, response time, up/down
+alerter.py         send_down_alert() / send_recovery_alert() via smtplib
+logger.py          file + console logging
+config.yaml        URLs and settings
+.env.example       credential template — copy to .env, never commit
+requirements.txt   requests · pyyaml · python-dotenv
 ```
+
+---
+
+## License
+
+MIT
