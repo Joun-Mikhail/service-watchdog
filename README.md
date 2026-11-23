@@ -1,7 +1,7 @@
 # service-watchdog
 
 [![CI](https://github.com/Joun-Mikhail/service-watchdog/actions/workflows/ci.yml/badge.svg)](https://github.com/Joun-Mikhail/service-watchdog/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 
 A lightweight Python uptime monitor that tells you **why** a service is down, not just that it is.
@@ -147,7 +147,7 @@ pytest          # unit tests (network calls are mocked)
 ruff check .    # lint
 ```
 
-CI runs lint and the test suite on Python 3.9 – 3.12 for every push and pull request.
+CI runs lint and the test suite on Python 3.10 – 3.13 for every push and pull request.
 
 ---
 
