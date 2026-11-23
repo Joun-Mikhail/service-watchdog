@@ -203,6 +203,7 @@ Details: **[docs/aws-deployment.md](docs/aws-deployment.md)**.
 | [AWS deployment](docs/aws-deployment.md) | Architecture, deploy, Logs Insights queries, troubleshooting, cost |
 | [Postmortem template](docs/postmortem-template.md) | Blameless incident review format |
 | [Postmortem example](docs/postmortem-example.md) | Worked example built from a demo-lab failure |
+| [Changelog](CHANGELOG.md) | Release history |
 
 ---
 
@@ -230,8 +231,9 @@ pytest          # unit tests + end-to-end tests against the demo lab
 ruff check .    # lint
 ```
 
-CI runs on every push and pull request: lint, tests on Python 3.10 – 3.13, a Docker build, real
-installs of the systemd service (Ubuntu) and the scheduled tasks (Windows), and Terraform validation.
+CI runs on every push and pull request: lint, tests with a 90% coverage gate on Python 3.10 – 3.13,
+a Docker build, real installs of the systemd service (Ubuntu) and the scheduled tasks (Windows),
+Terraform validation, and CodeQL security analysis. Dependabot keeps dependencies up to date.
 
 ### Project structure
 
