@@ -6,11 +6,13 @@ import argparse
 import os
 import sys
 import time
+from dataclasses import dataclass
+from typing import Optional
 
 from dotenv import load_dotenv
 
 import history
-from alerter import build_message, send_email
+from alerter import build_message, publish_sns, send_email
 from config import ConfigError, load_config
 from logger import setup_logger
 from monitor import DEGRADED, DOWN, check_target
@@ -36,21 +38,64 @@ def email_credentials():
     return creds if all(creds) else None
 
 
-def dispatch(event, settings, creds, logger, dry_run):
-    """Send (or log, in dry-run mode) the alert for an Event."""
-    subject, body = build_message(event)
-    if dry_run or creds is None:
-        logger.info("alert (not emailed): %s", subject)
-        return
-    sender, password, recipient = creds
-    try:
-        send_email(settings.smtp_server, settings.smtp_port, sender, password, recipient, subject, body)
-        logger.info("alert emailed: %s", subject)
-    except Exception as e:
-        logger.error("failed to send alert '%s': %s", subject, e)
+@dataclass
+class Notifier:
+    """Delivers alerts to every configured channel: email (SMTP) and/or AWS SNS."""
+
+    settings: object
+    logger: object
+    email_creds: Optional[tuple] = None
+    sns_topic_arn: Optional[str] = None
+    dry_run: bool = False
+
+    @classmethod
+    def from_env(cls, settings, logger, dry_run=False):
+        """Build a Notifier from environment variables (.env is loaded beforehand)."""
+        return cls(settings, logger, email_credentials(), os.getenv("ALERT_SNS_TOPIC_ARN") or None, dry_run)
+
+    @property
+    def channels(self):
+        """Names of the channels alerts will be delivered to."""
+        names = []
+        if self.email_creds:
+            names.append("email")
+        if self.sns_topic_arn:
+            names.append("sns")
+        return names
+
+    def send(self, event):
+        """Deliver an Event; failures on one channel do not block the others."""
+        subject, body = build_message(event)
+        if self.dry_run or not self.channels:
+            self.logger.info("alert (not sent): %s", subject)
+            return
+        if self.email_creds:
+            sender, password, recipient = self.email_creds
+            self._deliver(
+                "email",
+                subject,
+                send_email,
+                self.settings.smtp_server,
+                self.settings.smtp_port,
+                sender,
+                password,
+                recipient,
+                subject,
+                body,
+            )
+        if self.sns_topic_arn:
+            self._deliver("sns", subject, publish_sns, self.sns_topic_arn, subject, body)
+
+    def _deliver(self, channel, subject, func, *args):
+        """Call one channel's send function and log the outcome."""
+        try:
+            func(*args)
+            self.logger.info("alert sent via %s: %s", channel, subject)
+        except Exception as e:
+            self.logger.error("failed to send alert via %s '%s': %s", channel, subject, e)
 
 
-def run_round(settings, tracker, creds, logger, dry_run):
+def run_round(settings, tracker, notifier, logger):
     """Check every target once; return the list of CheckResults."""
     results = []
     for target in settings.targets:
@@ -61,7 +106,7 @@ def run_round(settings, tracker, creds, logger, dry_run):
         history.append(result, settings.history_file)
         event = tracker.update(result)
         if event:
-            dispatch(event, settings, creds, logger, dry_run)
+            notifier.send(event)
         results.append(result)
     return results
 
@@ -78,21 +123,22 @@ def main(argv=None):
         logger.error("configuration error: %s", e)
         return 2
 
-    creds = email_credentials()
-    if creds is None and not args.dry_run:
-        logger.warning("email credentials not set in .env; alerts will only be logged")
+    notifier = Notifier.from_env(settings, logger, args.dry_run)
+    if not notifier.channels and not args.dry_run:
+        logger.warning("no alert channel configured in .env (SMTP or SNS); alerts will only be logged")
 
     tracker = StateTracker(1 if args.once else settings.failure_threshold)
     logger.info(
-        "watchdog started: %d targets, every %s min, alert after %d failures",
+        "watchdog started: %d targets, every %s min, alert after %d failures, channels: %s",
         len(settings.targets),
         settings.check_interval,
         tracker.failure_threshold,
+        ", ".join(notifier.channels) or "none",
     )
 
     try:
         while True:
-            results = run_round(settings, tracker, creds, logger, args.dry_run)
+            results = run_round(settings, tracker, notifier, logger)
             if args.once:
                 return 1 if any(r.status == DOWN for r in results) else 0
             time.sleep(settings.check_interval * 60)
