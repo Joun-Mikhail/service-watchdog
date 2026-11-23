@@ -83,3 +83,51 @@ def test_publish_sns_uses_topic_region_and_safe_subject(monkeypatch):
     assert published["Subject"].startswith("[DOWN] Caf? ")
     assert len(published["Subject"]) < 100
     assert published["Message"] == "body"
+
+
+def test_template_credentials_are_treated_as_unset(monkeypatch):
+    monkeypatch.setenv("SENDER_EMAIL", "your-email@gmail.com")
+    monkeypatch.setenv("SENDER_PASSWORD", "your-app-password")
+    monkeypatch.setenv("RECIPIENT_EMAIL", "alert-recipient@example.com")
+    assert watchdog.email_credentials() is None
+
+
+def test_real_credentials_are_used(monkeypatch):
+    monkeypatch.setenv("SENDER_EMAIL", "ops@company.test")
+    monkeypatch.setenv("SENDER_PASSWORD", "s3cret")
+    monkeypatch.setenv("RECIPIENT_EMAIL", "oncall@company.test")
+    assert watchdog.email_credentials() == ("ops@company.test", "s3cret", "oncall@company.test")
+
+
+def test_send_email_uses_starttls_and_login(monkeypatch):
+    actions = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout):
+            actions.append(("connect", host, port))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            actions.append(("quit",))
+
+        def starttls(self):
+            actions.append(("starttls",))
+
+        def login(self, user, password):
+            actions.append(("login", user))
+
+        def send_message(self, msg):
+            actions.append(("send", msg["To"], msg["Subject"]))
+
+    monkeypatch.setattr(alerter.smtplib, "SMTP", FakeSMTP)
+    alerter.send_email("smtp.test", 587, "ops@company.test", "pw", "oncall@company.test", "Subject", "Body")
+
+    assert actions == [
+        ("connect", "smtp.test", 587),
+        ("starttls",),
+        ("login", "ops@company.test"),
+        ("send", "oncall@company.test", "Subject"),
+        ("quit",),
+    ]
