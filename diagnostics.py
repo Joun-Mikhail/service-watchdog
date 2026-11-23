@@ -43,7 +43,7 @@ def check_tcp(ip, port, timeout):
     try:
         with socket.create_connection((ip, port), timeout=timeout):
             pass
-    except socket.timeout as e:
+    except TimeoutError as e:
         raise DiagnosticError("TCP", f"connection to {ip}:{port} timed out after {timeout}s") from e
     except ConnectionRefusedError as e:
         raise DiagnosticError("TCP", f"connection to {ip}:{port} refused") from e
@@ -64,7 +64,7 @@ def check_tls(host, port, timeout):
                 cert = tls.getpeercert()
     except ssl.SSLCertVerificationError as e:
         raise DiagnosticError("TLS", f"certificate verification failed: {e.verify_message}") from e
-    except (ssl.SSLError, socket.timeout, OSError) as e:
+    except (ssl.SSLError, OSError) as e:
         raise DiagnosticError("TLS", f"TLS handshake with {host}:{port} failed: {e}") from e
 
     expires_at = ssl.cert_time_to_seconds(cert["notAfter"])
