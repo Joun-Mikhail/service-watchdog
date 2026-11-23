@@ -99,3 +99,28 @@ jobs:
         run: |
           ./deploy/windows/Install-WatchdogTask.ps1 -Uninstall
           if (Get-ScheduledTask -TaskName service-watchdog -ErrorAction SilentlyContinue) { throw 'task still registered' }
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/aws
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - name: Format
+        run: terraform fmt -check -recursive -diff
+      - name: Init
+        run: terraform init -backend=false -input=false
+      - name: Validate
+        run: terraform validate
+      - name: Render user data and run ShellCheck
+        run: |
+          terraform console -var alert_email=ci@example.com > /tmp/user_data.raw <<'EOF'
+          templatefile("user_data.sh.tftpl", { repo_url = "https://github.com/example/repo.git", repo_ref = "main", region = "eu-central-1", sns_topic_arn = "arn:aws:sns:eu-central-1:123456789012:alerts", log_group = "/service-watchdog/watchdog", config_yaml = "targets:\n- https://example.com\n" })
+          EOF
+          sed '1{/^<<EOT$/d}; ${/^EOT$/d}' /tmp/user_data.raw > /tmp/user_data.sh
+          head -5 /tmp/user_data.sh
+          shellcheck /tmp/user_data.sh

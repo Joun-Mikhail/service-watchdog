@@ -1,0 +1,54 @@
+#!/bin/bash
+# Bootstraps service-watchdog on Amazon Linux 2023. Rendered by Terraform.
+# Progress is logged to /var/log/watchdog-bootstrap.log
+set -euxo pipefail
+exec > >(tee -a /var/log/watchdog-bootstrap.log) 2>&1
+
+dnf install -y python3.11 python3.11-pip git amazon-cloudwatch-agent
+
+SRC=/usr/local/src/service-watchdog
+APP=/opt/service-watchdog
+git clone --depth 1 --branch "${repo_ref}" "${repo_url}" "$SRC"
+
+# Write config before install.sh so it is used instead of the example config
+install -d -m 755 "$APP"
+cat > "$APP/config.yaml" <<'CONFIG'
+${config_yaml}
+CONFIG
+
+cd "$SRC"
+PYTHON=python3.11 ./deploy/linux/install.sh
+"$APP/venv/bin/pip" install --quiet -r requirements-aws.txt
+
+# Alerts go to SNS; credentials come from the instance role, so no secrets on disk
+cat > "$APP/.env" <<ENV
+ALERT_SNS_TOPIC_ARN=${sns_topic_arn}
+AWS_DEFAULT_REGION=${region}
+ENV
+chown watchdog:watchdog "$APP/.env"
+chmod 600 "$APP/.env"
+systemctl restart service-watchdog
+
+cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'AGENT'
+{
+  "agent": {
+    "run_as_user": "root"
+  },
+  "logs": {
+    "logs_collected": {
+      "files": {
+        "collect_list": [
+          {
+            "file_path": "/opt/service-watchdog/logs/watchdog.log",
+            "log_group_name": "${log_group}",
+            "log_stream_name": "{instance_id}",
+            "timestamp_format": "%Y-%m-%d %H:%M:%S"
+          }
+        ]
+      }
+    }
+  }
+}
+AGENT
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json

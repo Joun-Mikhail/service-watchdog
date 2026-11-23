@@ -86,3 +86,13 @@ def send_email(smtp_server, smtp_port, sender, password, recipient, subject, bod
         server.starttls()
         server.login(sender, password)
         server.send_message(msg)
+
+
+def publish_sns(topic_arn, subject, body):
+    """Publish an alert to an AWS SNS topic (requires boto3; credentials come from the IAM role)."""
+    import boto3
+
+    region = topic_arn.split(":")[3]
+    # SNS subjects must be ASCII, single-line and under 100 characters
+    safe_subject = subject.encode("ascii", "replace").decode()[:99]
+    boto3.client("sns", region_name=region).publish(TopicArn=topic_arn, Subject=safe_subject, Message=body)
