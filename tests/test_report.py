@@ -49,6 +49,7 @@ def test_summary_counts_uptime_incidents_and_latency(tmp_path):
     assert s.uptime_pct == 70.0
     assert s.incidents == 2
     assert s.failure_categories["HTTP"] == 3
+    assert s.degraded == 0
     assert s.avg_latency_ms == sum(100 + i for i, st in enumerate(statuses) if st == UP) / 7
     assert s.p95_latency_ms == 109
 
@@ -73,3 +74,14 @@ def test_main_writes_html(tmp_path, capsys):
     assert report.main(["--history", str(path), "--html", str(out)]) == 0
     assert out.exists()
     assert "Uptime report" in capsys.readouterr().out
+
+
+def test_degraded_counts_as_up_but_is_reported(tmp_path):
+    path = tmp_path / "history.csv"
+    record(path, 0, UP, latency=100)
+    record(path, 1, "DEGRADED", category="LATENCY", latency=2500)
+    [s] = report.summarise(history.read(str(path)))
+
+    assert s.uptime_pct == 100.0
+    assert s.degraded == 1
+    assert s.incidents == 0
