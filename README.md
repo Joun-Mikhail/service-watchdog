@@ -21,6 +21,7 @@ layer that failed and points to the runbook for fixing it.
 - **Scriptable** — `--once` exits non-zero when something is down, for cron jobs and CI
 - **Uptime reports** — daily uptime %, incident count and p95 latency per service (text or HTML)
 - **Runs anywhere** — Docker, a hardened systemd service on Linux, or Task Scheduler on Windows
+- **AWS ready** — Terraform deploys it to EC2 with SNS alerts, CloudWatch logs, alarms and a dashboard
 
 ---
 
@@ -109,6 +110,19 @@ Get-Content .\logs\watchdog.log -Tail 20 -Wait
 Registers a task that starts at boot and restarts on failure, plus a daily report task. Runs without
 a stored password (S4U logon). Remove with `-Uninstall`.
 
+### AWS (Terraform)
+
+```bash
+cd infra/aws
+cp terraform.tfvars.example terraform.tfvars   # set alert_email and targets
+terraform init && terraform apply
+```
+
+Deploys to EC2 with no SSH and no inbound ports (access through SSM Session Manager), a
+least-privilege IAM role, alerts through SNS, logs in CloudWatch, a "watchdog silent" alarm that
+catches the monitor itself failing, and automatic instance recovery.
+See **[docs/aws-deployment.md](docs/aws-deployment.md)** for the architecture, operations and troubleshooting.
+
 ---
 
 ## Uptime report
@@ -156,12 +170,15 @@ email:
   smtp_port: 587
 ```
 
-`.env` (never committed):
+`.env` (never committed) — configure email, SNS, or both:
 
 ```
 SENDER_EMAIL=your-email@gmail.com
 SENDER_PASSWORD=your-app-password
 RECIPIENT_EMAIL=alerts@your-team.com
+
+# Optional: publish alerts to AWS SNS (pip install -r requirements-aws.txt)
+ALERT_SNS_TOPIC_ARN=arn:aws:sns:eu-central-1:123456789012:service-watchdog-alerts
 ```
 
 For Gmail, use an [App Password](https://support.google.com/accounts/answer/185833), not your account password.
@@ -211,7 +228,7 @@ ruff check .    # lint
 ```
 
 CI runs on every push and pull request: lint, tests on Python 3.10 – 3.13, a Docker build, and real
-installs of the systemd service (Ubuntu) and the scheduled tasks (Windows).
+installs of the systemd service (Ubuntu) and the scheduled tasks (Windows), and Terraform validation.
 
 ---
 
@@ -223,13 +240,15 @@ config.py          config loading and validation
 monitor.py         runs a check and classifies the result
 diagnostics.py     DNS, TCP and TLS checks
 state.py           failure threshold and incident tracking
-alerter.py         alert message formatting and SMTP delivery
+alerter.py         alert formatting, SMTP and SNS delivery
 logger.py          rotating file + console logging
 history.py         CSV check history
 report.py          uptime report (text / HTML)
 deploy/linux/      systemd units and installer
 deploy/windows/    Task Scheduler installer
 Dockerfile         container image (non-root)
+infra/aws/         Terraform for EC2, IAM, SNS and CloudWatch
+docs/              deployment guides
 tests/             pytest suite
 ```
 
