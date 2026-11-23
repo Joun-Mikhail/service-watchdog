@@ -1,0 +1,15 @@
+services:
+  watchdog:
+    build: .
+    image: service-watchdog:latest
+    container_name: service-watchdog
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./logs:/app/logs
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
